@@ -1,0 +1,31 @@
+{
+  "name": "bkpc-daily-bible-bot",
+  "version": "1.0.0",
+  "description": "텔레그램 성경통독 봇 - 매일 성경 구절을 전송하고 완독률을 추적합니다",
+  "main": "src/bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "bible",
+    "reading",
+    "scheduler"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "node-cron": "^3.0.3",
+    "@aws-sdk/client-s3": "^3.654.0",
+    "better-sqlite3": "^11.5.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

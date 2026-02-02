@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  bible-bot:
+    build: .
+    container_name: bkpc-daily-bible-bot
+    restart: unless-stopped
+    
+    # 환경 변수 (.env 파일에서 로드)
+    env_file:
+      - .env
+    
+    # 환경 변수 직접 설정 (선택사항)
+    environment:
+      - NODE_ENV=production
+      - TZ=Australia/Brisbane
+    
+    # 볼륨 마운트 (데이터베이스 영속성)
+    volumes:
+      - ./data:/app/data
+    
+    # 로그 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # 네트워크 (필요시)
+    # networks:
+    #   - bible-network
+
+# 네트워크 설정 (선택사항)
+# networks:
+#   bible-network:
+#     driver: bridge
