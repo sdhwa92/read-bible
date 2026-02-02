@@ -1,11 +1,13 @@
-# Node.js 20 Slim 이미지 사용
+# Node.js 20 Slim 이미지 사용 (Debian 기반)
 FROM node:20-slim
 
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 타임존 설정을 위한 패키지 설치
-RUN apk add --no-cache tzdata
+# 타임존 및 CA 인증서 설치 (Debian 방식)
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends tzdata ca-certificates && \
+  rm -rf /var/lib/apt/lists/*
 
 # 타임존 설정 (브리즈번)
 ENV TZ=Australia/Brisbane
