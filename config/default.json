@@ -1,6 +1,6 @@
 {
   "timezone": "Australia/Brisbane",
-  "sendTime": "21:00",
+  "sendTime": "05:00",
   "completionReportTime": "23:59",
   "excludeDays": [0],
   "completionKeywords": ["완독", "완료", "통독", "ㅇㄷ", "완덕", "와독", "완도"],
