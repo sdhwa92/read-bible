@@ -235,7 +235,10 @@ docker-compose down -v
 
 `.env` 파일의 `ADMIN_USER_IDS`에 등록된 사용자만 사용 가능:
 
-- `/reset [index]` - 진행 상황을 특정 인덱스로 초기화 (예: `/reset 0`)
+- `/reset [index]` - 진행 상황을 특정 인덱스로 초기화 (통계는 보존, 예: `/reset 0`)
+- `/hardreset CONFIRM [index]` - 모든 데이터 완전 초기화 (⚠️ 모든 완독 기록 및 통계 삭제)
+  - 예: `/hardreset CONFIRM 0` - 모든 데이터 삭제 후 0번부터 시작
+  - **주의**: 완독 기록, 일일/월간 통계, 전체 통독 통계가 모두 삭제됩니다
 - `/skip` - 현재 인덱스를 하나 건너뛰기
 - `/send [index]` - 특정 인덱스의 사진 즉시 전송 (테스트용, 예: `/send 1`)
 - `/setstart [날짜] [인덱스]` - 시작일과 시작 인덱스 설정
@@ -244,6 +247,7 @@ docker-compose down -v
   - 예: `/setstart null 50` - 즉시 시작, 50번 구절부터
   - 예: `/setstart null` - 즉시 시작으로 변경
 - `/test` - S3 연결 테스트
+- `/scheduleinfo` - 스케줄러 정보 조회 (현재 시간, 다음 실행 시간 등)
 
 ## AWS EC2 배포
 
