@@ -1,5 +1,5 @@
-import { Telegraf } from 'telegraf';
-import { config, updateConfig } from './config.js';
+import { Telegraf } from "telegraf";
+import { config, updateConfig } from "./config.js";
 import {
   getCurrentIndex,
   updateProgress,
@@ -9,22 +9,22 @@ import {
   getRecentDailyStats,
   getMonthlyStats,
   getLatestOverallStats,
-  getUserCompletionCount
-} from './database.js';
+  getUserCompletionCount,
+} from "./database.js";
 import {
   getTotalImageCount,
   downloadImageByIndex,
   validateIndex,
-  testS3Connection
-} from './s3Service.js';
+  testS3Connection,
+} from "./s3Service.js";
 import {
   getTodayDate,
   isAdmin,
   formatNumber,
   logInfo,
-  logError
-} from './utils.js';
-import { setBot, startAllSchedules } from './scheduler.js';
+  logError,
+} from "./utils.js";
+import { setBot, startAllSchedules } from "./scheduler.js";
 
 // 봇 인스턴스 생성
 const bot = new Telegraf(config.telegram.botToken);
@@ -37,7 +37,7 @@ setBot(bot);
 /**
  * /start - 봇 소개 및 사용법
  */
-bot.command('start', async (ctx) => {
+bot.command("start", async (ctx) => {
   try {
     let message =
       `📖 성경통독 봇에 오신 것을 환영합니다!\n\n` +
@@ -52,7 +52,7 @@ bot.command('start', async (ctx) => {
       `/monthly [년] [월] - 월간 통계\n` +
       `/overall - 전체 통독 통계\n` +
       `/mycount - 내 완독 횟수\n\n`;
-    
+
     // 관리자에게만 관리자 명령어 안내
     if (isAdmin(ctx.from.id)) {
       message +=
@@ -63,34 +63,35 @@ bot.command('start', async (ctx) => {
         `/setstart [날짜] [인덱스] - 시작일/인덱스 설정\n` +
         `/test - S3 연결 테스트\n\n`;
     }
-    
+
     message += `🙏 함께 성경통독을 완주해요!`;
-    
+
     await ctx.reply(message);
     logInfo(`/start 명령어 실행: 사용자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/start 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다. 나중에 다시 시도해주세요.');
+    logError("/start 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다. 나중에 다시 시도해주세요.");
   }
 });
 
 /**
  * /status - 현재 진행 상황
  */
-bot.command('status', async (ctx) => {
+bot.command("status", async (ctx) => {
   try {
     const currentIndex = getCurrentIndex();
     const totalCount = await getTotalImageCount();
     const progress = getProgress();
-    const percentage = totalCount > 0 ? ((currentIndex / totalCount) * 100).toFixed(1) : 0;
-    
+    const percentage =
+      totalCount > 0 ? ((currentIndex / totalCount) * 100).toFixed(1) : 0;
+
     let message = `📊 현재 진행 상황\n\n`;
-    
+
     // 시작일 정보 표시
     if (config.startDate) {
       const today = getTodayDate();
       const startDate = config.startDate;
-      
+
       if (today < startDate) {
         message += `⏰ 시작 예정일: ${startDate}\n`;
         message += `시작 인덱스: ${config.startIndex || 0}\n`;
@@ -99,103 +100,106 @@ bot.command('status', async (ctx) => {
         message += `시작일: ${startDate}\n\n`;
       }
     }
-    
+
     message += `진행: ${currentIndex} / ${totalCount} (${percentage}%)\n`;
-    message += `마지막 전송일: ${progress.last_sent_date || '없음'}\n`;
+    message += `마지막 전송일: ${progress.last_sent_date || "없음"}\n`;
     message += `남은 구절: ${totalCount - currentIndex}개`;
-    
+
     await ctx.reply(message);
     logInfo(`/status 명령어 실행: 사용자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/status 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/status 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /stats - 최근 7일 완독률 통계
  */
-bot.command('stats', async (ctx) => {
+bot.command("stats", async (ctx) => {
   try {
     const recentStats = getRecentDailyStats(7);
-    
+
     if (recentStats.length === 0) {
-      await ctx.reply('아직 통계 데이터가 없습니다.');
+      await ctx.reply("아직 통계 데이터가 없습니다.");
       return;
     }
-    
+
     let message = `📈 최근 ${recentStats.length}일 통독 통계\n\n`;
-    
-    recentStats.reverse().forEach(stat => {
+
+    recentStats.reverse().forEach((stat) => {
       message += `${stat.date}: ${stat.completion_rate}% (${stat.completed_count}/${stat.total_members}명)\n`;
     });
-    
-    const avgRate = (recentStats.reduce((sum, s) => sum + s.completion_rate, 0) / recentStats.length).toFixed(1);
+
+    const avgRate = (
+      recentStats.reduce((sum, s) => sum + s.completion_rate, 0) /
+      recentStats.length
+    ).toFixed(1);
     message += `\n평균 완독률: ${avgRate}%`;
-    
+
     await ctx.reply(message);
     logInfo(`/stats 명령어 실행: 사용자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/stats 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/stats 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /monthly - 월간 통계 조회
  */
-bot.command('monthly', async (ctx) => {
+bot.command("monthly", async (ctx) => {
   try {
-    const args = ctx.message.text.split(' ').slice(1);
+    const args = ctx.message.text.split(" ").slice(1);
     const year = args[0] ? parseInt(args[0]) : new Date().getFullYear();
     const month = args[1] ? parseInt(args[1]) : new Date().getMonth() + 1;
-    
+
     if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
-      await ctx.reply('올바른 형식으로 입력해주세요.\n예: /monthly 2024 12');
+      await ctx.reply("올바른 형식으로 입력해주세요.\n예: /monthly 2024 12");
       return;
     }
-    
+
     const stats = getMonthlyStats(year, month);
-    
+
     if (!stats) {
       await ctx.reply(`${year}년 ${month}월 통계가 없습니다.`);
       return;
     }
-    
+
     const message =
       `📅 ${year}년 ${month}월 통독 통계\n\n` +
       `총 통독일: ${stats.reading_days}일\n` +
       `총 완독 횟수: ${formatNumber(stats.total_completions)}회\n` +
       `평균 완독률: ${stats.average_rate}%`;
-    
+
     await ctx.reply(message);
     logInfo(`/monthly 명령어 실행: 사용자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/monthly 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/monthly 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /overall - 전체 통독 통계 조회
  */
-bot.command('overall', async (ctx) => {
+bot.command("overall", async (ctx) => {
   try {
     const stats = getLatestOverallStats();
-    
+
     if (!stats) {
-      await ctx.reply('아직 전체 통독을 완료하지 않았습니다.');
+      await ctx.reply("아직 전체 통독을 완료하지 않았습니다.");
       return;
     }
-    
+
     const topParticipants = JSON.parse(stats.top_participants);
     const topList = topParticipants
       .map((p, idx) => {
         const name = p.first_name || p.username || `사용자${p.user_id}`;
         return `${idx + 1}. ${name}: ${p.count}회`;
       })
-      .join('\n');
-    
+      .join("\n");
+
     const message =
       `🎊 전체 성경통독 통계\n\n` +
       `📖 통독 기간\n` +
@@ -207,29 +211,29 @@ bot.command('overall', async (ctx) => {
       `총 완독 횟수: ${formatNumber(stats.total_completions)}회\n` +
       `평균 완독률: ${stats.average_rate}%\n\n` +
       `🏆 완독왕 TOP 5\n${topList}`;
-    
+
     await ctx.reply(message);
     logInfo(`/overall 명령어 실행: 사용자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/overall 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/overall 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /mycount - 내 완독 횟수 조회
  */
-bot.command('mycount', async (ctx) => {
+bot.command("mycount", async (ctx) => {
   try {
     const userId = ctx.from.id;
     const count = getUserCompletionCount(userId);
-    const name = ctx.from.first_name || ctx.from.username || '님';
-    
+    const name = ctx.from.first_name || ctx.from.username || "님";
+
     await ctx.reply(`${name}의 완독 횟수: ${count}회`);
     logInfo(`/mycount 명령어 실행: 사용자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/mycount 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/mycount 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
@@ -238,107 +242,115 @@ bot.command('mycount', async (ctx) => {
 /**
  * /reset - 진행 상황 초기화 (관리자 전용)
  */
-bot.command('reset', async (ctx) => {
+bot.command("reset", async (ctx) => {
   try {
     if (!isAdmin(ctx.from.id)) {
-      await ctx.reply('⛔ 관리자만 사용할 수 있는 명령어입니다.');
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
       return;
     }
-    
-    const args = ctx.message.text.split(' ').slice(1);
+
+    const args = ctx.message.text.split(" ").slice(1);
     const newIndex = args[0] ? parseInt(args[0]) : 0;
-    
+
     if (isNaN(newIndex) || newIndex < 0) {
-      await ctx.reply('올바른 인덱스를 입력해주세요.\n예: /reset 0');
+      await ctx.reply("올바른 인덱스를 입력해주세요.\n예: /reset 0");
       return;
     }
-    
+
     resetProgress(newIndex);
     await ctx.reply(`✅ 진행 상황이 ${newIndex}번으로 초기화되었습니다.`);
-    logInfo(`/reset 명령어 실행: 관리자 ${ctx.from.username || ctx.from.id}, 인덱스 ${newIndex}`);
+    logInfo(
+      `/reset 명령어 실행: 관리자 ${
+        ctx.from.username || ctx.from.id
+      }, 인덱스 ${newIndex}`
+    );
   } catch (error) {
-    logError('/reset 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/reset 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /skip - 현재 인덱스 건너뛰기 (관리자 전용)
  */
-bot.command('skip', async (ctx) => {
+bot.command("skip", async (ctx) => {
   try {
     if (!isAdmin(ctx.from.id)) {
-      await ctx.reply('⛔ 관리자만 사용할 수 있는 명령어입니다.');
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
       return;
     }
-    
+
     const currentIndex = getCurrentIndex();
     const newIndex = currentIndex + 1;
-    
+
     updateProgress(newIndex);
-    await ctx.reply(`✅ ${currentIndex}번 구절을 건너뛰고 ${newIndex}번으로 이동했습니다.`);
+    await ctx.reply(
+      `✅ ${currentIndex}번 구절을 건너뛰고 ${newIndex}번으로 이동했습니다.`
+    );
     logInfo(`/skip 명령어 실행: 관리자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/skip 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/skip 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /setstart - 시작일과 시작 인덱스 설정 (관리자 전용)
  */
-bot.command('setstart', async (ctx) => {
+bot.command("setstart", async (ctx) => {
   try {
     if (!isAdmin(ctx.from.id)) {
-      await ctx.reply('⛔ 관리자만 사용할 수 있는 명령어입니다.');
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
       return;
     }
-    
-    const args = ctx.message.text.split(' ').slice(1);
-    
+
+    const args = ctx.message.text.split(" ").slice(1);
+
     if (args.length === 0) {
       await ctx.reply(
-        '사용법:\n' +
-        '/setstart [날짜] [인덱스]\n\n' +
-        '예시:\n' +
-        '/setstart 2026-02-10 1  - 2026년 2월 10일부터 1번 구절부터\n' +
-        '/setstart 2026-02-10    - 2026년 2월 10일부터 (현재 인덱스 유지)\n' +
-        '/setstart null 50       - 즉시 시작, 50번 구절부터\n' +
-        '/setstart null          - 즉시 시작으로 변경'
+        "사용법:\n" +
+          "/setstart [날짜] [인덱스]\n\n" +
+          "예시:\n" +
+          "/setstart 2026-02-10 1  - 2026년 2월 10일부터 1번 구절부터\n" +
+          "/setstart 2026-02-10    - 2026년 2월 10일부터 (현재 인덱스 유지)\n" +
+          "/setstart null 50       - 즉시 시작, 50번 구절부터\n" +
+          "/setstart null          - 즉시 시작으로 변경"
       );
       return;
     }
-    
+
     let startDate = args[0];
     let startIndex = args[1] ? parseInt(args[1]) : undefined;
-    
+
     // 날짜 검증
-    if (startDate === 'null') {
+    if (startDate === "null") {
       startDate = null;
     } else if (startDate) {
       // YYYY-MM-DD 형식 검증
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(startDate)) {
-        await ctx.reply('❌ 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식으로 입력해주세요.\n예: 2026-02-10');
+        await ctx.reply(
+          "❌ 날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식으로 입력해주세요.\n예: 2026-02-10"
+        );
         return;
       }
-      
+
       // 유효한 날짜인지 확인
       const date = new Date(startDate);
       if (isNaN(date.getTime())) {
-        await ctx.reply('❌ 유효하지 않은 날짜입니다.');
+        await ctx.reply("❌ 유효하지 않은 날짜입니다.");
         return;
       }
     }
-    
+
     // 인덱스 검증
     if (startIndex !== undefined) {
       if (isNaN(startIndex) || startIndex < 0) {
-        await ctx.reply('❌ 시작 인덱스는 0 이상의 숫자여야 합니다.');
+        await ctx.reply("❌ 시작 인덱스는 0 이상의 숫자여야 합니다.");
         return;
       }
     }
-    
+
     // 설정 업데이트
     const updates = {};
     if (startDate !== undefined) {
@@ -347,99 +359,107 @@ bot.command('setstart', async (ctx) => {
     if (startIndex !== undefined) {
       updates.startIndex = startIndex;
     }
-    
+
     await updateConfig(updates);
-    
-    let message = '✅ 설정이 업데이트되었습니다.\n\n';
+
+    let message = "✅ 설정이 업데이트되었습니다.\n\n";
     if (startDate !== undefined) {
-      message += `시작일: ${startDate || '즉시 시작'}\n`;
+      message += `시작일: ${startDate || "즉시 시작"}\n`;
     }
     if (startIndex !== undefined) {
       message += `시작 인덱스: ${startIndex}\n`;
     }
-    message += '\n변경사항은 다음 스케줄부터 적용됩니다.';
-    
+    message += "\n변경사항은 다음 스케줄부터 적용됩니다.";
+
     await ctx.reply(message);
-    logInfo(`/setstart 명령어 실행: 관리자 ${ctx.from.username || ctx.from.id}, 날짜=${startDate}, 인덱스=${startIndex}`);
+    logInfo(
+      `/setstart 명령어 실행: 관리자 ${
+        ctx.from.username || ctx.from.id
+      }, 날짜=${startDate}, 인덱스=${startIndex}`
+    );
   } catch (error) {
-    logError('/setstart 명령어 실패', error);
-    await ctx.reply('❌ 설정 업데이트 중 오류가 발생했습니다.');
+    logError("/setstart 명령어 실패", error);
+    await ctx.reply("❌ 설정 업데이트 중 오류가 발생했습니다.");
   }
 });
 
 /**
  * /send - 특정 인덱스의 사진 즉시 전송 (관리자 전용)
  */
-bot.command('send', async (ctx) => {
+bot.command("send", async (ctx) => {
   try {
     if (!isAdmin(ctx.from.id)) {
-      await ctx.reply('⛔ 관리자만 사용할 수 있는 명령어입니다.');
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
       return;
     }
-    
-    const args = ctx.message.text.split(' ').slice(1);
+
+    const args = ctx.message.text.split(" ").slice(1);
     const index = args[0] ? parseInt(args[0]) : null;
-    
+
     if (!index || isNaN(index)) {
-      await ctx.reply('인덱스를 입력해주세요.\n예: /send 1');
+      await ctx.reply("인덱스를 입력해주세요.\n예: /send 1");
       return;
     }
-    
+
     // 인덱스 검증
     const validation = await validateIndex(index);
     if (!validation.valid) {
       await ctx.reply(`❌ ${validation.message}`);
       return;
     }
-    
+
     await ctx.reply(`⏳ 인덱스 ${index} 이미지를 다운로드 중...`);
-    
+
     // 이미지 다운로드
     const imageData = await downloadImageByIndex(index);
-    
+
     if (!imageData) {
       await ctx.reply(`❌ 인덱스 ${index}의 이미지를 찾을 수 없습니다.`);
       return;
     }
-    
+
     // 사진 전송
     await ctx.replyWithPhoto(
       { source: imageData.buffer },
       { caption: `📖 테스트 전송: ${index}번 구절` }
     );
-    
-    logInfo(`/send 명령어 실행: 관리자 ${ctx.from.username || ctx.from.id}, 인덱스 ${index}`);
+
+    logInfo(
+      `/send 명령어 실행: 관리자 ${
+        ctx.from.username || ctx.from.id
+      }, 인덱스 ${index}`
+    );
   } catch (error) {
-    logError('/send 명령어 실패', error);
-    await ctx.reply('오류가 발생했습니다.');
+    logError("/send 명령어 실패", error);
+    await ctx.reply("오류가 발생했습니다.");
   }
 });
 
 /**
  * /test - S3 연결 테스트 (관리자 전용)
  */
-bot.command('test', async (ctx) => {
+bot.command("test", async (ctx) => {
   try {
     if (!isAdmin(ctx.from.id)) {
-      await ctx.reply('⛔ 관리자만 사용할 수 있는 명령어입니다.');
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
       return;
     }
-    
-    await ctx.reply('⏳ S3 연결을 테스트 중...');
-    
+
+    await ctx.reply("⏳ S3 연결을 테스트 중...");
+
     const success = await testS3Connection();
-    
+
     if (success) {
       const totalCount = await getTotalImageCount();
       await ctx.reply(`✅ S3 연결 성공!\n📸 총 이미지: ${totalCount}개`);
     } else {
-      await ctx.reply('❌ S3 연결 실패. 설정을 확인해주세요.');
+      await ctx.reply("❌ S3 연결 실패. 설정을 확인해주세요.");
     }
-    
+
     logInfo(`/test 명령어 실행: 관리자 ${ctx.from.username || ctx.from.id}`);
   } catch (error) {
-    logError('/test 명령어 실패', error);
-    await ctx.reply('❌ 테스트 중 오류가 발생했습니다.');
+    logError("/test 명령어 실패", error);
+    await ctx.reply("❌ 테스트 중 오류가 발생했습니다.");
   }
 });
 
@@ -448,69 +468,69 @@ bot.command('test', async (ctx) => {
 /**
  * 완독 키워드 감지
  */
-bot.on('text', async (ctx) => {
+bot.on("text", async (ctx) => {
   try {
     const text = ctx.message.text.trim();
-    
+
     // 명령어는 무시
-    if (text.startsWith('/')) {
+    if (text.startsWith("/")) {
       return;
     }
-    
+
     // 완독 키워드 체크
     if (config.completionKeywords.includes(text)) {
       const userId = ctx.from.id;
       const username = ctx.from.username || null;
       const firstName = ctx.from.first_name || null;
       const today = getTodayDate();
-      
+
       const recorded = recordCompletion(userId, username, firstName, today);
-      
+
       if (recorded) {
         logInfo(`완독 기록: 사용자 ${username || userId}, 날짜 ${today}`);
         // 조용히 기록만 함 (응답 없음)
       }
     }
   } catch (error) {
-    logError('텍스트 메시지 처리 실패', error);
+    logError("텍스트 메시지 처리 실패", error);
   }
 });
 
 // ==================== 에러 핸들러 ====================
 
 bot.catch((error, ctx) => {
-  logError('봇 에러', error);
-  console.error('Telegram API Error:', error);
+  logError("봇 에러", error);
+  console.error("Telegram API Error:", error);
 });
 
 // ==================== 봇 시작 ====================
 
 async function startBot() {
   try {
-    logInfo('봇 시작 중...');
-    
+    logInfo("봇 시작 중...");
+
     // S3 연결 테스트
     const s3Connected = await testS3Connection();
     if (!s3Connected) {
-      logError('S3 연결 실패', new Error('S3 설정을 확인해주세요.'));
+      logError("S3 연결 실패", new Error("S3 설정을 확인해주세요."));
       process.exit(1);
     }
-    
+
     // 스케줄러 시작
     startAllSchedules();
-    
+
     // 봇 실행 (Polling 방식)
     await bot.launch();
-    
-    logInfo('✅ 봇이 성공적으로 시작되었습니다!');
+
+    logInfo("✅ 봇이 성공적으로 시작되었습니다!");
     logInfo(`봇 이름: @${bot.botInfo.username}`);
     logInfo(`그룹 Chat ID: ${config.telegram.groupChatId}`);
-    
+
     // Graceful shutdown
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+    process.once("SIGINT", () => bot.stop("SIGINT"));
+    process.once("SIGTERM", () => bot.stop("SIGTERM"));
   } catch (error) {
-    logError('봇 시작 실패', error);
+    logError("봇 시작 실패", error);
     process.exit(1);
   }
 }
