@@ -4,6 +4,7 @@ import {
   getCurrentIndex,
   updateProgress,
   resetProgress,
+  hardResetAllData,
   recordCompletion,
   getProgress,
   getRecentDailyStats,
@@ -57,7 +58,8 @@ bot.command("start", async (ctx) => {
     if (isAdmin(ctx.from.id)) {
       message +=
         `🔧 관리자 명령어:\n` +
-        `/reset [인덱스] - 진행 상황 초기화\n` +
+        `/reset [인덱스] - 진행 상황 초기화 (통계 보존)\n` +
+        `/hardreset CONFIRM [인덱스] - 모든 데이터 완전 초기화\n` +
         `/skip - 하루 건너뛰기\n` +
         `/send [인덱스] - 특정 구절 즉시 전송\n` +
         `/setstart [날짜] [인덱스] - 시작일/인덱스 설정\n` +
@@ -259,7 +261,9 @@ bot.command("reset", async (ctx) => {
     }
 
     resetProgress(newIndex);
-    await ctx.reply(`✅ 진행 상황이 ${newIndex}번으로 초기화되었습니다.`);
+    await ctx.reply(
+      `✅ 진행 상황이 ${newIndex}번으로 초기화되었습니다.\n\n💡 통계는 보존됩니다.`
+    );
     logInfo(
       `/reset 명령어 실행: 관리자 ${
         ctx.from.username || ctx.from.id
@@ -268,6 +272,68 @@ bot.command("reset", async (ctx) => {
   } catch (error) {
     logError("/reset 명령어 실패", error);
     await ctx.reply("오류가 발생했습니다.");
+  }
+});
+
+/**
+ * /hardreset - 모든 데이터 완전 초기화 (관리자 전용)
+ * 주의: 모든 완독 기록과 통계가 삭제됩니다!
+ */
+bot.command("hardreset", async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
+      return;
+    }
+
+    const args = ctx.message.text.split(" ").slice(1);
+
+    // 확인 단계: "CONFIRM"을 입력해야 실행
+    if (args[0] !== "CONFIRM") {
+      await ctx.reply(
+        `⚠️  경고: 전체 데이터 초기화\n\n` +
+          `이 명령어는 다음 데이터를 모두 삭제합니다:\n` +
+          `• 모든 완독 기록\n` +
+          `• 일일 통계\n` +
+          `• 월간 통계\n` +
+          `• 전체 통독 통계\n` +
+          `• 진행 상황\n\n` +
+          `정말로 실행하시려면:\n` +
+          `/hardreset CONFIRM [인덱스]\n\n` +
+          `예: /hardreset CONFIRM 0`
+      );
+      return;
+    }
+
+    const newIndex = args[1] ? parseInt(args[1]) : 0;
+
+    if (isNaN(newIndex) || newIndex < 0) {
+      await ctx.reply(
+        "올바른 인덱스를 입력해주세요.\n예: /hardreset CONFIRM 0"
+      );
+      return;
+    }
+
+    // 전체 데이터 초기화 실행
+    const success = hardResetAllData(newIndex);
+
+    if (success) {
+      await ctx.reply(
+        `✅ 전체 데이터가 완전히 초기화되었습니다.\n\n` +
+          `시작 인덱스: ${newIndex}\n` +
+          `모든 통계가 삭제되었습니다.`
+      );
+      logInfo(
+        `/hardreset 명령어 실행: 관리자 ${
+          ctx.from.username || ctx.from.id
+        }, 인덱스 ${newIndex}`
+      );
+    } else {
+      await ctx.reply("❌ 데이터 초기화 중 오류가 발생했습니다.");
+    }
+  } catch (error) {
+    logError("/hardreset 명령어 실패", error);
+    await ctx.reply("❌ 오류가 발생했습니다.");
   }
 });
 
