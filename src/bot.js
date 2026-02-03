@@ -24,7 +24,7 @@ import {
   logInfo,
   logError,
 } from "./utils.js";
-import { setBot, startAllSchedules } from "./scheduler.js";
+import { setBot, startAllSchedules, getScheduleInfo } from "./scheduler.js";
 
 // 봇 인스턴스 생성
 const bot = new Telegraf(config.telegram.botToken);
@@ -61,7 +61,8 @@ bot.command("start", async (ctx) => {
         `/skip - 하루 건너뛰기\n` +
         `/send [인덱스] - 특정 구절 즉시 전송\n` +
         `/setstart [날짜] [인덱스] - 시작일/인덱스 설정\n` +
-        `/test - S3 연결 테스트\n\n`;
+        `/test - S3 연결 테스트\n` +
+        `/scheduleinfo - 스케줄러 정보 조회\n\n`;
     }
 
     message += `🙏 함께 성경통독을 완주해요!`;
@@ -460,6 +461,60 @@ bot.command("test", async (ctx) => {
   } catch (error) {
     logError("/test 명령어 실패", error);
     await ctx.reply("❌ 테스트 중 오류가 발생했습니다.");
+  }
+});
+
+/**
+ * /scheduleinfo - 스케줄러 정보 조회 (관리자 전용)
+ */
+bot.command("scheduleinfo", async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
+      return;
+    }
+
+    const info = getScheduleInfo();
+
+    let message = `📅 스케줄러 정보\n\n`;
+    message += `🕐 현재 서버 시간\n`;
+    message += `${info.currentTime}\n`;
+    message += `타임존: ${info.timezone}\n`;
+    message += `요일: ${info.dayOfWeek}\n\n`;
+
+    message += `📋 등록된 스케줄\n\n`;
+
+    // 일일 말씀 전송
+    const dr = info.schedules.dailyReading;
+    message += `1️⃣ 일일 말씀 전송\n`;
+    message += `   시간: ${dr.time} (${dr.days})\n`;
+    message += `   상태: ${dr.active ? "✅ 활성" : "❌ 비활성"}\n`;
+    message += `   시작일: ${dr.startDate}\n`;
+    message += `   Cron: ${dr.cronExpression}\n\n`;
+
+    // 일일 완독률 보고
+    const drep = info.schedules.dailyReport;
+    message += `2️⃣ 일일 완독률 보고\n`;
+    message += `   시간: ${drep.time} (${drep.days})\n`;
+    message += `   상태: ${drep.active ? "✅ 활성" : "❌ 비활성"}\n`;
+    message += `   Cron: ${drep.cronExpression}\n\n`;
+
+    // 월간 통계 보고
+    const mr = info.schedules.monthlyReport;
+    message += `3️⃣ 월간 통계 보고\n`;
+    message += `   시간: ${mr.time} (${mr.days})\n`;
+    message += `   상태: ${mr.active ? "✅ 활성" : "❌ 비활성"}\n`;
+    message += `   Cron: ${mr.cronExpression}\n\n`;
+
+    message += `💡 TIP: Docker 로그를 확인하여 스케줄러 실행 여부를 확인할 수 있습니다.`;
+
+    await ctx.reply(message);
+    logInfo(
+      `/scheduleinfo 명령어 실행: 관리자 ${ctx.from.username || ctx.from.id}`
+    );
+  } catch (error) {
+    logError("/scheduleinfo 명령어 실패", error);
+    await ctx.reply("❌ 스케줄러 정보 조회 중 오류가 발생했습니다.");
   }
 });
 

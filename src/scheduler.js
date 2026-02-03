@@ -22,6 +22,11 @@ import {
 } from "./utils.js";
 
 let bot = null;
+let schedules = {
+  dailyReading: null,
+  dailyReport: null,
+  monthlyReport: null,
+};
 
 /**
  * 봇 인스턴스 설정
@@ -40,13 +45,30 @@ export function scheduleDailyReading() {
   const [hour, minute] = config.sendTime.split(":");
   const cronExpression = `${minute} ${hour} * * 1-6`; // 월-토요일
 
-  logInfo(`일일 성경 구절 전송 스케줄 등록: ${config.sendTime} (월-토)`);
+  logInfo(`[스케줄러] 일일 성경 구절 전송 스케줄 등록`);
+  logInfo(`  - 시간: ${config.sendTime} (월-토요일)`);
+  logInfo(`  - Cron 표현식: ${cronExpression}`);
+  logInfo(`  - 타임존: ${config.timezone}`);
 
-  cron.schedule(
+  schedules.dailyReading = cron.schedule(
     cronExpression,
     async () => {
       try {
-        logInfo("일일 성경 구절 전송 작업 시작");
+        const now = new Date();
+        const nowStr = now.toLocaleString("ko-KR", {
+          timeZone: config.timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          weekday: "long",
+        });
+
+        logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        logInfo(`[일일 전송] 작업 시작 - ${nowStr}`);
+        logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
         // 시작 날짜 체크
         if (config.startDate) {
@@ -55,7 +77,7 @@ export function scheduleDailyReading() {
 
           if (today < startDate) {
             logInfo(
-              `아직 시작일(${startDate})이 아닙니다. 현재: ${today}. 대기 중...`
+              `⏳ 아직 시작일이 아닙니다. 시작일: ${startDate}, 현재: ${today}`
             );
             return;
           }
@@ -65,26 +87,30 @@ export function scheduleDailyReading() {
         const totalCount = await getTotalImageCount();
         const nextIndex = currentIndex + 1;
 
-        logInfo(`현재 진행: ${currentIndex}/${totalCount}`);
+        logInfo(
+          `📊 현재 진행: ${currentIndex}/${totalCount} (다음: ${nextIndex})`
+        );
 
         // 이미 모든 구절을 전송한 경우
         if (currentIndex >= totalCount) {
-          logInfo("모든 성경 구절 전송 완료");
+          logInfo("✅ 모든 성경 구절 전송 완료");
           return;
         }
 
         // 다음 이미지 다운로드
+        logInfo(`⬇️  인덱스 ${nextIndex} 이미지 다운로드 중...`);
         const imageData = await downloadImageByIndex(nextIndex);
 
         if (!imageData) {
           logError(
-            "이미지 다운로드 실패",
+            "❌ 이미지 다운로드 실패",
             new Error(`인덱스 ${nextIndex}의 이미지를 찾을 수 없습니다.`)
           );
           return;
         }
 
         // 텔레그램으로 사진 전송
+        logInfo(`📤 텔레그램으로 이미지 전송 중...`);
         await bot.telegram.sendPhoto(
           config.telegram.groupChatId,
           { source: imageData.buffer },
@@ -96,7 +122,7 @@ export function scheduleDailyReading() {
         // 진행 상황 업데이트
         updateProgress(nextIndex);
 
-        logInfo(`성경 구절 ${nextIndex}/${totalCount} 전송 완료`);
+        logInfo(`✅ 성경 구절 ${nextIndex}/${totalCount} 전송 완료!`);
 
         // 마지막 구절인 경우 전체 통독 완료 처리
         if (nextIndex === totalCount) {
@@ -104,8 +130,10 @@ export function scheduleDailyReading() {
           // 다음 날 전체 통계 보고
           setTimeout(() => generateAndSendOverallStats(), 1000 * 60 * 60 * 24); // 24시간 후
         }
+
+        logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       } catch (error) {
-        logError("일일 성경 구절 전송 실패", error);
+        logError("❌ [일일 전송] 작업 실패", error);
       }
     },
     {
@@ -122,15 +150,29 @@ export function scheduleDailyReport() {
   const [hour, minute] = config.completionReportTime.split(":");
   const cronExpression = `${minute} ${hour} * * *`; // 매일
 
-  logInfo(
-    `일일 완독률 보고 스케줄 등록: ${config.completionReportTime} (매일)`
-  );
+  logInfo(`[스케줄러] 일일 완독률 보고 스케줄 등록`);
+  logInfo(`  - 시간: ${config.completionReportTime} (매일)`);
+  logInfo(`  - Cron 표현식: ${cronExpression}`);
+  logInfo(`  - 타임존: ${config.timezone}`);
 
-  cron.schedule(
+  schedules.dailyReport = cron.schedule(
     cronExpression,
     async () => {
       try {
-        logInfo("일일 완독률 보고 작업 시작");
+        const now = new Date();
+        const nowStr = now.toLocaleString("ko-KR", {
+          timeZone: config.timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+
+        logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        logInfo(`[일일 보고] 작업 시작 - ${nowStr}`);
+        logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
         const today = getTodayDate();
 
@@ -167,9 +209,10 @@ export function scheduleDailyReport() {
 
         await bot.telegram.sendMessage(config.telegram.groupChatId, message);
 
-        logInfo(`일일 완독률 보고 완료: ${completionRate}%`);
+        logInfo(`✅ 일일 완독률 보고 완료: ${completionRate}%`);
+        logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       } catch (error) {
-        logError("일일 완독률 보고 실패", error);
+        logError("❌ [일일 보고] 작업 실패", error);
       }
     },
     {
@@ -184,11 +227,14 @@ export function scheduleDailyReport() {
  */
 export function scheduleMonthlyReport() {
   // 매월 28-31일 23:55에 실행 (내일이 1일이면 월말)
-  const cronExpression = "55 23 28-31 * *";
+  const cronExpression = "59 23 28-31 * *";
 
-  logInfo("월간 통계 보고 스케줄 등록: 매월 말일 23:55");
+  logInfo(`[스케줄러] 월간 통계 보고 스케줄 등록`);
+  logInfo(`  - 시간: 매월 말일 23:59`);
+  logInfo(`  - Cron 표현식: ${cronExpression}`);
+  logInfo(`  - 타임존: ${config.timezone}`);
 
-  cron.schedule(
+  schedules.monthlyReport = cron.schedule(
     cronExpression,
     async () => {
       try {
@@ -197,7 +243,20 @@ export function scheduleMonthlyReport() {
 
         // 내일이 1일이면 오늘이 월말
         if (tomorrow.getDate() === 1) {
-          logInfo("월간 통계 보고 작업 시작");
+          const now = new Date();
+          const nowStr = now.toLocaleString("ko-KR", {
+            timeZone: config.timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+
+          logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          logInfo(`[월간 보고] 작업 시작 - ${nowStr}`);
+          logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
           const today = new Date();
           const year = today.getFullYear();
@@ -224,10 +283,11 @@ export function scheduleMonthlyReport() {
 
           await bot.telegram.sendMessage(config.telegram.groupChatId, message);
 
-          logInfo(`월간 통계 보고 완료: ${year}년 ${month}월`);
+          logInfo(`✅ 월간 통계 보고 완료: ${year}년 ${month}월`);
+          logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
         }
       } catch (error) {
-        logError("월간 통계 보고 실패", error);
+        logError("❌ [월간 보고] 작업 실패", error);
       }
     },
     {
@@ -306,13 +366,77 @@ export async function generateAndSendOverallStats() {
 }
 
 /**
+ * 스케줄러 정보 조회
+ */
+export function getScheduleInfo() {
+  const now = new Date();
+  const timezone = config.timezone;
+
+  // 현재 시간 정보
+  const currentTime = now.toLocaleString("ko-KR", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    weekday: "long",
+  });
+
+  const dayOfWeek = now.toLocaleDateString("ko-KR", {
+    timeZone: timezone,
+    weekday: "long",
+  });
+
+  // 스케줄 정보
+  const [readingHour, readingMinute] = config.sendTime.split(":");
+  const [reportHour, reportMinute] = config.completionReportTime.split(":");
+
+  return {
+    currentTime,
+    timezone,
+    dayOfWeek,
+    schedules: {
+      dailyReading: {
+        time: config.sendTime,
+        cronExpression: `${readingMinute} ${readingHour} * * 1-6`,
+        days: "월-토요일",
+        active: schedules.dailyReading !== null,
+        startDate: config.startDate || "즉시 시작",
+      },
+      dailyReport: {
+        time: config.completionReportTime,
+        cronExpression: `${reportMinute} ${reportHour} * * *`,
+        days: "매일",
+        active: schedules.dailyReport !== null,
+      },
+      monthlyReport: {
+        time: "23:59",
+        cronExpression: "59 23 28-31 * *",
+        days: "매월 말일",
+        active: schedules.monthlyReport !== null,
+      },
+    },
+  };
+}
+
+/**
  * 모든 스케줄 시작
  */
 export function startAllSchedules() {
-  logInfo("모든 스케줄 시작");
+  logInfo("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  logInfo("📅 모든 스케줄러 시작");
+  logInfo("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
   scheduleDailyReading();
   scheduleDailyReport();
   scheduleMonthlyReport();
+
+  const info = getScheduleInfo();
+  logInfo(`⏰ 현재 시간: ${info.currentTime}`);
+  logInfo(`🌏 타임존: ${info.timezone}`);
+  logInfo("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
 export default {
@@ -322,4 +446,5 @@ export default {
   scheduleMonthlyReport,
   generateAndSendOverallStats,
   startAllSchedules,
+  getScheduleInfo,
 };
