@@ -179,10 +179,12 @@ export function scheduleDailyReport() {
         // 그룹 멤버 수 조회
         let totalMembers = 0;
         try {
-          const chatMemberCount = await bot.telegram.getChatMemberCount(
+          // getChatMembersCount 메서드 사용 (Telegram Bot API)
+          const chatMemberCount = await bot.telegram.getChatMembersCount(
             config.telegram.groupChatId
           );
           totalMembers = chatMemberCount - 1; // 봇 제외
+          logInfo(`그룹 멤버 수 조회 성공: ${totalMembers}명 (봇 제외)`);
         } catch (error) {
           logError("그룹 멤버 수 조회 실패", error);
           totalMembers = 0;
