@@ -25,7 +25,12 @@ import {
   logInfo,
   logError,
 } from "./utils.js";
-import { setBot, startAllSchedules, getScheduleInfo } from "./scheduler.js";
+import {
+  setBot,
+  startAllSchedules,
+  restartAllSchedules,
+  getScheduleInfo,
+} from "./scheduler.js";
 
 // 봇 인스턴스 생성
 const bot = new Telegraf(config.telegram.botToken);
@@ -63,6 +68,7 @@ bot.command("start", async (ctx) => {
         `/skip - 하루 건너뛰기\n` +
         `/send [인덱스] - 특정 구절 즉시 전송\n` +
         `/setstart [날짜] [인덱스] - 시작일/인덱스 설정\n` +
+        `/setstarttime [시간] - 말씀 전송 시간 설정\n` +
         `/test - S3 연결 테스트\n` +
         `/scheduleinfo - 스케줄러 정보 조회\n\n`;
     }
@@ -429,12 +435,19 @@ bot.command("setstart", async (ctx) => {
 
     await updateConfig(updates);
 
+    // 시작 인덱스가 설정되었으면 데이터베이스도 업데이트
+    if (startIndex !== undefined) {
+      updateProgress(startIndex);
+      logInfo(`데이터베이스 진행 상황 업데이트: 인덱스 ${startIndex}`);
+    }
+
     let message = "✅ 설정이 업데이트되었습니다.\n\n";
     if (startDate !== undefined) {
       message += `시작일: ${startDate || "즉시 시작"}\n`;
     }
     if (startIndex !== undefined) {
       message += `시작 인덱스: ${startIndex}\n`;
+      message += `데이터베이스도 업데이트되었습니다.\n`;
     }
     message += "\n변경사항은 다음 스케줄부터 적용됩니다.";
 
@@ -581,6 +594,66 @@ bot.command("scheduleinfo", async (ctx) => {
   } catch (error) {
     logError("/scheduleinfo 명령어 실패", error);
     await ctx.reply("❌ 스케줄러 정보 조회 중 오류가 발생했습니다.");
+  }
+});
+
+/**
+ * /setstarttime - 말씀 전송 시간 설정 (관리자 전용)
+ */
+bot.command("setstarttime", async (ctx) => {
+  try {
+    if (!isAdmin(ctx.from.id)) {
+      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
+      return;
+    }
+
+    const args = ctx.message.text.split(" ").slice(1);
+
+    if (args.length === 0) {
+      await ctx.reply(
+        "사용법:\n" +
+          "/setstarttime [시간]\n\n" +
+          "예시:\n" +
+          "/setstarttime 05:00  - 오전 5시로 설정\n" +
+          "/setstarttime 08:30  - 오전 8시 30분으로 설정\n\n" +
+          `현재 설정: ${config.sendTime}`
+      );
+      return;
+    }
+
+    const newTime = args[0];
+
+    // HH:MM 형식 검증
+    const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
+    if (!timeRegex.test(newTime)) {
+      await ctx.reply(
+        "❌ 시간 형식이 올바르지 않습니다. HH:MM 형식으로 입력해주세요.\n예: 05:00, 08:30"
+      );
+      return;
+    }
+
+    // 설정 업데이트
+    await updateConfig({ sendTime: newTime });
+
+    // 스케줄러 재시작
+    await ctx.reply("⏳ 스케줄러를 재시작하는 중...");
+    restartAllSchedules();
+
+    await ctx.reply(
+      `✅ 말씀 전송 시간이 변경되었습니다.\n\n` +
+        `새로운 시간: ${newTime} (월-토요일)\n` +
+        `타임존: ${config.timezone}\n\n` +
+        `스케줄러가 재시작되어 변경사항이 즉시 적용되었습니다.`
+    );
+
+    logInfo(
+      `/setstarttime 명령어 실행: 관리자 ${
+        ctx.from.username || ctx.from.id
+      }, 새 시간=${newTime}`
+    );
+  } catch (error) {
+    logError("/setstarttime 명령어 실패", error);
+    await ctx.reply("❌ 시간 설정 중 오류가 발생했습니다.");
   }
 });
 

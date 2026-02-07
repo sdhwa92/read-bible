@@ -441,6 +441,40 @@ export function startAllSchedules() {
   logInfo("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
+/**
+ * 모든 스케줄 중지
+ */
+export function stopAllSchedules() {
+  logInfo("📅 모든 스케줄러 중지 중...");
+
+  if (schedules.dailyReading) {
+    schedules.dailyReading.stop();
+    schedules.dailyReading = null;
+  }
+
+  if (schedules.dailyReport) {
+    schedules.dailyReport.stop();
+    schedules.dailyReport = null;
+  }
+
+  if (schedules.monthlyReport) {
+    schedules.monthlyReport.stop();
+    schedules.monthlyReport = null;
+  }
+
+  logInfo("✅ 모든 스케줄러 중지 완료");
+}
+
+/**
+ * 모든 스케줄 재시작
+ */
+export function restartAllSchedules() {
+  logInfo("🔄 모든 스케줄러 재시작 중...");
+  stopAllSchedules();
+  startAllSchedules();
+  logInfo("✅ 모든 스케줄러 재시작 완료");
+}
+
 export default {
   setBot,
   scheduleDailyReading,
@@ -448,5 +482,7 @@ export default {
   scheduleMonthlyReport,
   generateAndSendOverallStats,
   startAllSchedules,
+  stopAllSchedules,
+  restartAllSchedules,
   getScheduleInfo,
 };
