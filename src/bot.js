@@ -67,8 +67,7 @@ bot.command("start", async (ctx) => {
         `/hardreset CONFIRM [인덱스] - 모든 데이터 완전 초기화\n` +
         `/skip - 하루 건너뛰기\n` +
         `/send [인덱스] - 특정 구절 즉시 전송\n` +
-        `/setstart [날짜] [인덱스] - 시작일/인덱스 설정\n` +
-        `/setstarttime [시간] - 말씀 전송 시간 설정\n` +
+        `/setstart [날짜] [시간] [인덱스] - 시작일/시간/인덱스 설정\n` +
         `/test - S3 연결 테스트\n` +
         `/scheduleinfo - 스케줄러 정보 조회\n\n`;
     }
@@ -368,7 +367,7 @@ bot.command("skip", async (ctx) => {
 });
 
 /**
- * /setstart - 시작일과 시작 인덱스 설정 (관리자 전용)
+ * /setstart - 시작일, 전송 시간, 시작 인덱스 설정 (관리자 전용)
  */
 bot.command("setstart", async (ctx) => {
   try {
@@ -382,18 +381,24 @@ bot.command("setstart", async (ctx) => {
     if (args.length === 0) {
       await ctx.reply(
         "사용법:\n" +
-          "/setstart [날짜] [인덱스]\n\n" +
+          "/setstart [날짜] [시간] [인덱스]\n\n" +
           "예시:\n" +
-          "/setstart 2026-02-10 1  - 2026년 2월 10일부터 1번 구절부터\n" +
-          "/setstart 2026-02-10    - 2026년 2월 10일부터 (현재 인덱스 유지)\n" +
-          "/setstart null 50       - 즉시 시작, 50번 구절부터\n" +
-          "/setstart null          - 즉시 시작으로 변경"
+          "/setstart 2026-02-10 05:00 1  - 2026년 2월 10일 오전 5시부터 1번 구절부터\n" +
+          "/setstart 2026-02-10 05:00    - 2026년 2월 10일 오전 5시부터 (현재 인덱스 유지)\n" +
+          "/setstart 2026-02-10          - 2026년 2월 10일부터 (현재 시간, 인덱스 유지)\n" +
+          "/setstart null 08:00 50       - 즉시 시작, 오전 8시 전송, 50번 구절부터\n" +
+          "/setstart null 08:00          - 시간만 변경 (즉시 시작)\n\n" +
+          `현재 설정:\n` +
+          `- 시작일: ${config.startDate || "즉시 시작"}\n` +
+          `- 전송 시간: ${config.sendTime}\n` +
+          `- 인덱스: ${config.startIndex || 0}`
       );
       return;
     }
 
     let startDate = args[0];
-    let startIndex = args[1] ? parseInt(args[1]) : undefined;
+    let sendTime = args[1];
+    let startIndex = args[2] ? parseInt(args[2]) : undefined;
 
     // 날짜 검증
     if (startDate === "null") {
@@ -416,8 +421,23 @@ bot.command("setstart", async (ctx) => {
       }
     }
 
+    // 시간 검증
+    if (sendTime && sendTime !== "null") {
+      const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
+      if (!timeRegex.test(sendTime)) {
+        await ctx.reply(
+          "❌ 시간 형식이 올바르지 않습니다. HH:MM 형식으로 입력해주세요.\n예: 05:00, 08:30"
+        );
+        return;
+      }
+    } else if (sendTime === "null") {
+      sendTime = undefined;
+    }
+
     // 인덱스 검증
-    if (startIndex !== undefined) {
+    if (args[2] === "null") {
+      startIndex = undefined;
+    } else if (startIndex !== undefined) {
       if (isNaN(startIndex) || startIndex < 0) {
         await ctx.reply("❌ 시작 인덱스는 0 이상의 숫자여야 합니다.");
         return;
@@ -432,6 +452,9 @@ bot.command("setstart", async (ctx) => {
     if (startIndex !== undefined) {
       updates.startIndex = startIndex;
     }
+    if (sendTime) {
+      updates.sendTime = sendTime;
+    }
 
     await updateConfig(updates);
 
@@ -441,21 +464,42 @@ bot.command("setstart", async (ctx) => {
       logInfo(`데이터베이스 진행 상황 업데이트: 인덱스 ${startIndex}`);
     }
 
+    // 시간이 변경되었으면 스케줄러 재시작
+    let needsRestart = false;
+    if (sendTime) {
+      needsRestart = true;
+    }
+
     let message = "✅ 설정이 업데이트되었습니다.\n\n";
     if (startDate !== undefined) {
       message += `시작일: ${startDate || "즉시 시작"}\n`;
+    }
+    if (sendTime) {
+      message += `전송 시간: ${sendTime} (월-토요일)\n`;
     }
     if (startIndex !== undefined) {
       message += `시작 인덱스: ${startIndex}\n`;
       message += `데이터베이스도 업데이트되었습니다.\n`;
     }
-    message += "\n변경사항은 다음 스케줄부터 적용됩니다.";
 
-    await ctx.reply(message);
+    if (needsRestart) {
+      message += "\n⏳ 스케줄러를 재시작하는 중...";
+      await ctx.reply(message);
+
+      restartAllSchedules();
+
+      await ctx.reply(
+        "✅ 스케줄러가 재시작되어 변경사항이 즉시 적용되었습니다."
+      );
+    } else {
+      message += "\n변경사항은 다음 스케줄부터 적용됩니다.";
+      await ctx.reply(message);
+    }
+
     logInfo(
       `/setstart 명령어 실행: 관리자 ${
         ctx.from.username || ctx.from.id
-      }, 날짜=${startDate}, 인덱스=${startIndex}`
+      }, 날짜=${startDate}, 시간=${sendTime}, 인덱스=${startIndex}`
     );
   } catch (error) {
     logError("/setstart 명령어 실패", error);
@@ -594,66 +638,6 @@ bot.command("scheduleinfo", async (ctx) => {
   } catch (error) {
     logError("/scheduleinfo 명령어 실패", error);
     await ctx.reply("❌ 스케줄러 정보 조회 중 오류가 발생했습니다.");
-  }
-});
-
-/**
- * /setstarttime - 말씀 전송 시간 설정 (관리자 전용)
- */
-bot.command("setstarttime", async (ctx) => {
-  try {
-    if (!isAdmin(ctx.from.id)) {
-      await ctx.reply("⛔ 관리자만 사용할 수 있는 명령어입니다.");
-      return;
-    }
-
-    const args = ctx.message.text.split(" ").slice(1);
-
-    if (args.length === 0) {
-      await ctx.reply(
-        "사용법:\n" +
-          "/setstarttime [시간]\n\n" +
-          "예시:\n" +
-          "/setstarttime 05:00  - 오전 5시로 설정\n" +
-          "/setstarttime 08:30  - 오전 8시 30분으로 설정\n\n" +
-          `현재 설정: ${config.sendTime}`
-      );
-      return;
-    }
-
-    const newTime = args[0];
-
-    // HH:MM 형식 검증
-    const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
-    if (!timeRegex.test(newTime)) {
-      await ctx.reply(
-        "❌ 시간 형식이 올바르지 않습니다. HH:MM 형식으로 입력해주세요.\n예: 05:00, 08:30"
-      );
-      return;
-    }
-
-    // 설정 업데이트
-    await updateConfig({ sendTime: newTime });
-
-    // 스케줄러 재시작
-    await ctx.reply("⏳ 스케줄러를 재시작하는 중...");
-    restartAllSchedules();
-
-    await ctx.reply(
-      `✅ 말씀 전송 시간이 변경되었습니다.\n\n` +
-        `새로운 시간: ${newTime} (월-토요일)\n` +
-        `타임존: ${config.timezone}\n\n` +
-        `스케줄러가 재시작되어 변경사항이 즉시 적용되었습니다.`
-    );
-
-    logInfo(
-      `/setstarttime 명령어 실행: 관리자 ${
-        ctx.from.username || ctx.from.id
-      }, 새 시간=${newTime}`
-    );
-  } catch (error) {
-    logError("/setstarttime 명령어 실패", error);
-    await ctx.reply("❌ 시간 설정 중 오류가 발생했습니다.");
   }
 });
 
