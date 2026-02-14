@@ -28,10 +28,10 @@ db.pragma("journal_mode = WAL"); // 성능 향상
 export function initializeDatabase() {
   logInfo("데이터베이스 초기화 시작...");
 
-  // 진행 상황 추적 테이블
+  // 진행 상황 추적 테이블 (각 레코드 = 하나의 통독 세션)
   db.exec(`
     CREATE TABLE IF NOT EXISTS progress (
-      id INTEGER PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       current_index INTEGER DEFAULT 0,
       last_sent_date TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -99,7 +99,7 @@ export function initializeDatabase() {
   if (progressExists.count === 0) {
     const startIndex = config.startIndex || 0;
     db.prepare(
-      "INSERT INTO progress (id, current_index, last_sent_date) VALUES (1, ?, NULL)"
+      "INSERT INTO progress (current_index, last_sent_date) VALUES (?, NULL)"
     ).run(startIndex);
     logInfo(`초기 진행 상황 레코드 생성 완료 (시작 인덱스: ${startIndex})`);
   }
@@ -110,10 +110,10 @@ export function initializeDatabase() {
 // ==================== 진행 상황 관리 ====================
 
 /**
- * 현재 진행 상황 조회
+ * 현재 진행 상황 조회 (최신 세션)
  */
 export function getProgress() {
-  return db.prepare("SELECT * FROM progress WHERE id = 1").get();
+  return db.prepare("SELECT * FROM progress ORDER BY id DESC LIMIT 1").get();
 }
 
 /**
@@ -125,24 +125,28 @@ export function getCurrentIndex() {
 }
 
 /**
- * 진행 상황 업데이트
+ * 진행 상황 업데이트 (최신 세션)
  */
 export function updateProgress(newIndex) {
   const today = getTodayDate();
-  db.prepare(
-    "UPDATE progress SET current_index = ?, last_sent_date = ? WHERE id = 1"
-  ).run(newIndex, today);
-  logInfo(`진행 상황 업데이트: ${newIndex}`);
+  const currentProgress = getProgress();
+  if (currentProgress) {
+    db.prepare(
+      "UPDATE progress SET current_index = ?, last_sent_date = ? WHERE id = ?"
+    ).run(newIndex, today, currentProgress.id);
+    logInfo(`진행 상황 업데이트: ${newIndex}`);
+  }
 }
 
 /**
- * 진행 상황 초기화
+ * 진행 상황 초기화 (새로운 세션 생성)
  */
 export function resetProgress(newIndex = 0) {
   db.prepare(
-    "UPDATE progress SET current_index = ?, last_sent_date = NULL WHERE id = 1"
+    "INSERT INTO progress (current_index, last_sent_date) VALUES (?, NULL)"
   ).run(newIndex);
-  logInfo(`진행 상황 초기화: ${newIndex}`);
+  logInfo(`새로운 통독 세션 시작: 인덱스 ${newIndex}`);
+  return db.prepare("SELECT last_insert_rowid() as id").get().id;
 }
 
 /**
@@ -161,9 +165,10 @@ export function hardResetAllData(newIndex = 0) {
       db.prepare("DELETE FROM monthly_stats").run();
       db.prepare("DELETE FROM overall_stats").run();
 
-      // 진행 상황 초기화
+      // 모든 progress 레코드 삭제 후 새로 생성
+      db.prepare("DELETE FROM progress").run();
       db.prepare(
-        "UPDATE progress SET current_index = ?, last_sent_date = NULL WHERE id = 1"
+        "INSERT INTO progress (current_index, last_sent_date) VALUES (?, NULL)"
       ).run(newIndex);
 
       logInfo("✅ 모든 테이블 데이터 삭제 완료");
@@ -234,9 +239,30 @@ export function getCompletionsByDate(date) {
 }
 
 /**
- * 상위 참여자 조회 (완독 횟수 순)
+ * 상위 참여자 조회 (완독 횟수 순, 현재 세션 기준)
  */
 export function getTopParticipants(limit = 5) {
+  const currentProgress = getProgress();
+  if (!currentProgress || !currentProgress.created_at) {
+    return db
+      .prepare(
+        `
+      SELECT 
+        user_id,
+        username,
+        first_name,
+        COUNT(*) as count
+      FROM completions
+      GROUP BY user_id
+      ORDER BY count DESC
+      LIMIT ?
+    `
+      )
+      .all(limit);
+  }
+  
+  // 현재 세션의 created_at 이후 완독 기록만 집계
+  const sessionStartDate = currentProgress.created_at.split(' ')[0];
   return db
     .prepare(
       `
@@ -246,21 +272,34 @@ export function getTopParticipants(limit = 5) {
       first_name,
       COUNT(*) as count
     FROM completions
+    WHERE date >= ?
     GROUP BY user_id
     ORDER BY count DESC
     LIMIT ?
   `
     )
-    .all(limit);
+    .all(sessionStartDate, limit);
 }
 
 /**
- * 특정 사용자의 완독 횟수 조회
+ * 특정 사용자의 완독 횟수 조회 (현재 세션 기준)
  */
 export function getUserCompletionCount(userId) {
+  const currentProgress = getProgress();
+  if (!currentProgress || !currentProgress.created_at) {
+    const result = db
+      .prepare("SELECT COUNT(*) as count FROM completions WHERE user_id = ?")
+      .get(userId);
+    return result ? result.count : 0;
+  }
+  
+  // 현재 세션의 created_at 이후 완독 기록만 집계
+  const sessionStartDate = currentProgress.created_at.split(' ')[0];
   const result = db
-    .prepare("SELECT COUNT(*) as count FROM completions WHERE user_id = ?")
-    .get(userId);
+    .prepare(
+      "SELECT COUNT(*) as count FROM completions WHERE user_id = ? AND date >= ?"
+    )
+    .get(userId, sessionStartDate);
   return result ? result.count : 0;
 }
 
@@ -299,31 +338,56 @@ export function getDailyStats(date) {
 }
 
 /**
- * 최근 N일의 통계 조회
+ * 최근 N일의 통계 조회 (현재 세션 기준)
  */
 export function getRecentDailyStats(days = 7) {
+  const currentProgress = getProgress();
+  if (!currentProgress || !currentProgress.created_at) {
+    return db
+      .prepare(
+        `
+      SELECT * FROM daily_stats 
+      ORDER BY date DESC 
+      LIMIT ?
+    `
+      )
+      .all(days);
+  }
+  
+  // 현재 세션의 created_at 이후 통계만 조회하되, 최근 N일로 제한
+  const sessionStartDate = currentProgress.created_at.split(' ')[0];
   return db
     .prepare(
       `
     SELECT * FROM daily_stats 
+    WHERE date >= ?
     ORDER BY date DESC 
     LIMIT ?
   `
     )
-    .all(days);
+    .all(sessionStartDate, days);
 }
 
 /**
- * 전체 일일 통계 조회
+ * 전체 일일 통계 조회 (현재 세션 기준)
  */
 export function getAllDailyStats() {
-  return db.prepare("SELECT * FROM daily_stats ORDER BY date").all();
+  const currentProgress = getProgress();
+  if (!currentProgress || !currentProgress.created_at) {
+    return db.prepare("SELECT * FROM daily_stats ORDER BY date").all();
+  }
+  
+  // 현재 세션의 created_at 이후 통계만 조회
+  const sessionStartDate = currentProgress.created_at.split(' ')[0]; // 'YYYY-MM-DD HH:MM:SS'에서 날짜만 추출
+  return db
+    .prepare("SELECT * FROM daily_stats WHERE date >= ? ORDER BY date")
+    .all(sessionStartDate);
 }
 
 // ==================== 월간 통계 관리 ====================
 
 /**
- * 월간 통계 계산
+ * 월간 통계 계산 (현재 세션 기준)
  */
 export function calculateMonthlyStats(year, month) {
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -332,18 +396,42 @@ export function calculateMonthlyStats(year, month) {
       ? `${year + 1}-01-01`
       : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-  const stats = db
-    .prepare(
-      `
-    SELECT 
-      COUNT(*) as reading_days,
-      SUM(completed_count) as total_completions,
-      AVG(completion_rate) as average_rate
-    FROM daily_stats
-    WHERE date >= ? AND date < ?
-  `
-    )
-    .get(startDate, endDate);
+  const currentProgress = getProgress();
+  const sessionStartDate = currentProgress?.created_at?.split(' ')[0];
+
+  let stats;
+  
+  if (sessionStartDate) {
+    // 현재 세션 시작일과 월간 기간의 더 늦은 날짜를 시작점으로 사용
+    const effectiveStartDate = startDate > sessionStartDate ? startDate : sessionStartDate;
+    
+    stats = db
+      .prepare(
+        `
+      SELECT 
+        COUNT(*) as reading_days,
+        SUM(completed_count) as total_completions,
+        AVG(completion_rate) as average_rate
+      FROM daily_stats
+      WHERE date >= ? AND date < ?
+    `
+      )
+      .get(effectiveStartDate, endDate);
+  } else {
+    // 세션 정보가 없으면 기존 방식대로
+    stats = db
+      .prepare(
+        `
+      SELECT 
+        COUNT(*) as reading_days,
+        SUM(completed_count) as total_completions,
+        AVG(completion_rate) as average_rate
+      FROM daily_stats
+      WHERE date >= ? AND date < ?
+    `
+      )
+      .get(startDate, endDate);
+  }
 
   if (!stats || stats.reading_days === 0) {
     return null;

@@ -458,10 +458,10 @@ bot.command("setstart", async (ctx) => {
 
     await updateConfig(updates);
 
-    // 시작 인덱스가 설정되었으면 데이터베이스도 업데이트
+    // 시작 인덱스가 설정되었으면 새로운 세션 생성
     if (startIndex !== undefined) {
-      updateProgress(startIndex);
-      logInfo(`데이터베이스 진행 상황 업데이트: 인덱스 ${startIndex}`);
+      const newSessionId = resetProgress(startIndex);
+      logInfo(`새로운 통독 세션 생성: ID ${newSessionId}, 인덱스 ${startIndex}`);
     }
 
     // 시간이 변경되었으면 스케줄러 재시작

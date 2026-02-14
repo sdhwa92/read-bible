@@ -315,10 +315,13 @@ export async function generateAndSendOverallStats() {
     logInfo("전체 통독 통계 생성 시작");
 
     const progress = getProgress();
-    const startDate = progress.created_at || getTodayDate();
+    // created_at에서 날짜 부분만 추출 (YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD)
+    const startDate = progress.created_at 
+      ? progress.created_at.split(' ')[0] 
+      : getTodayDate();
     const endDate = getTodayDate();
 
-    // 전체 기간 통계 계산
+    // 현재 세션의 통계만 계산 (getAllDailyStats가 자동으로 필터링)
     const allDailyStats = getAllDailyStats();
     const totalDays = allDailyStats.length;
     const totalReadings = await getTotalImageCount();
