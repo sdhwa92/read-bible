@@ -174,6 +174,15 @@ export function scheduleDailyReport() {
         logInfo(`[일일 보고] 작업 시작 - ${nowStr}`);
         logInfo(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
+        // 전체 통독 완료 확인
+        const currentIndex = getCurrentIndex();
+        const totalCount = await getTotalImageCount();
+
+        if (currentIndex >= totalCount) {
+          logInfo("✅ 전체 성경 구절 전송 완료 - 일일 보고 중단");
+          return;
+        }
+
         const today = getTodayDate();
 
         // 그룹 멤버 수 조회
